@@ -30,7 +30,7 @@ function expectedCell(actual) {
   return new RegExp(escape(String(actual)))
 }
 
-for (const file of ['README.md', 'README.zh.md']) {
+for (const file of ['README.md', 'README.en.md']) {
   test(`${file}: the config table documents exactly the supported keys`, () => {
     assert.deepEqual([...configTable(file).keys()].sort(), Object.keys(DEFAULTS).sort())
   })
@@ -45,11 +45,19 @@ for (const file of ['README.md', 'README.zh.md']) {
   })
 }
 
+test('README.md is the Chinese homepage default and README.en.md is English', () => {
+  const home = readFileSync(join(repo, 'README.md'), 'utf8')
+  const english = readFileSync(join(repo, 'README.en.md'), 'utf8')
+  const cjk = (text) => (text.match(/[\u4e00-\u9fff]/g) ?? []).length
+  assert.ok(cjk(home) > 500, 'README.md should be the Chinese edition')
+  assert.ok(cjk(english) < 20, 'README.en.md should be English apart from its switcher')
+})
+
 test('the two READMEs link to each other (language switcher)', () => {
-  const en = readFileSync(join(repo, 'README.md'), 'utf8')
-  const zh = readFileSync(join(repo, 'README.zh.md'), 'utf8')
-  assert.match(en, /\]\(README\.zh\.md\)/, 'README.md must link to README.zh.md')
-  assert.match(zh, /\]\(README\.md\)/, 'README.zh.md must link to README.md')
+  const zh = readFileSync(join(repo, 'README.md'), 'utf8')
+  const en = readFileSync(join(repo, 'README.en.md'), 'utf8')
+  assert.match(zh, /\]\(README\.en\.md\)/, 'README.md (the Chinese homepage) must link to README.en.md')
+  assert.match(en, /\]\(README\.md\)/, 'README.en.md must link to README.md')
 })
 
 test('the bundle patch and the plugin agree on the row id and package name', () => {

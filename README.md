@@ -1,117 +1,142 @@
 # dsh-browsercontrol-mcp
 
-**English** | [简体中文](README.zh.md)
+**简体中文** | [English](README.en.md)
 
-Real browser control for **DeepSeek Harness**: mounts **Playwright MCP** as native tools
-(`mcp__playwright__*`) so the agent can navigate, click, type, drag, upload, snapshot,
-screenshot, read console/network, and evaluate JS in a browser you actually use.
+把 **Playwright MCP** 挂进 DeepSeek Harness，让智能体直接操作真实浏览器。
 
-## Why a plugin and not a plain YAML row
+安装后自动挂载官方 `@deepseek-ai/dsh-mcp-client` 行，工具以 `mcp__playwright__*` 出现在模型工具表里：
+导航、点击、填表、按键、拖拽、上传、快照、截图、控制台、网络请求、执行 JS。
 
-Three facts are only knowable at runtime:
+## 为什么是插件而不是一段 YAML
 
-1. `@playwright/mcp` restricts its `exports`, so `@playwright/mcp/cli.js` cannot be resolved
-   (`ERR_PACKAGE_PATH_NOT_EXPORTED`). The real path comes from the package's exported
-   `./package.json` plus its `bin` field.
-2. On Windows `npx` is a `.cmd`, which Node's spawn cannot execute without a shell.
-3. Both the `cli.js` path and the Node path only exist after installation.
+三个只有运行时才知道的事实：
 
-So `apply()` resolves them, starts the MCP server with `process.execPath`, and mounts the
-generated row on the loader. Disposing the plugin removes the row with it.
+1. `@playwright/mcp` 的 `exports` **不导出** `./cli.js`，直接 resolve 子路径会 `ERR_PACKAGE_PATH_NOT_EXPORTED`；
+   正确做法是从它导出的 `./package.json` 读 `bin` 字段再拼接。
+2. Windows 上 `npx` 是 `npx.cmd`，Node 的 `spawn` 不加 shell 起不来。
+3. `cli.js` 的绝对路径与 `node` 的绝对路径都要等安装完成后才能确定。
 
-The plugin never takes the harness down with it: invalid config or a missing `@playwright/mcp`
-prints `dsh-browsercontrol-mcp: not mounting: ...` and contributes no tools, instead of
-failing the whole plugin tree.
+所以本插件在 `apply()` 里解析出绝对路径，用 `process.execPath`（当前 node）启动 MCP 服务进程，并把生成的
+行挂到 loader 上；插件被卸载时随 fiber 一起回收，不留孤儿配置。
 
-## Install
+插件**不会因为配置错误而拖垮 Harness**：参数不合法、或找不到 `@playwright/mcp` 时，它打印一条
+`dsh-browsercontrol-mcp: not mounting: ...` 并选择"不贡献任何工具"，而不是让整个插件树加载失败。
+
+## 安装
 
 ```powershell
+# 从 GitHub（发布后）
 dsh plugin --profile web add github:<owner>/dsh-browsercontrol-mcp
-# local development
-dsh plugin --profile web add link:C:\path\to\dsh-browsercontrol-mcp
+
+# 本地开发（改代码即时生效）
+dsh plugin --profile web add link:C:\Users\you\Desktop\dsh-browsercontrol-mcp
 ```
 
-**Restart the profile once after installing.** `patchReload: live` covers edits to patch files,
-but a newly installed bundle only joins the composition at profile start, so nothing changes
-until you restart (`dsh web`); nothing in the config is lost.
+**装完必须重启一次 profile。** `patchReload: live` 只覆盖 patch 文件的改动，**新装的 bundle 要到进程启动时才参与组合**，不重启不会生效（重启 `dsh web` 即可，配置本身不会丢）。
 
-Verify: ask the agent to list its browser tools, or inspect `host / Tool / listTools` for
-`mcp__playwright__*`.
+验证方式：问智能体"列出你有哪些浏览器工具"，或走 Inspect：`host / Tool / listTools`，应出现 `mcp__playwright__*`。
 
-## Configuration
+卸载：
 
-| Key | Default | Meaning |
+```powershell
+dsh plugin --profile web remove dsh-browsercontrol-mcp
+```
+
+## 配置
+
+改本插件那一行的 `config`（写在自己的 `cordis.patch.yml` 里，或 profile patch 里用同一个 `id` 定点覆盖）：
+
+| 键 | 默认 | 说明 |
 |---|---|---|
-| `serverName` | `playwright` | Tool namespace: `mcp__<serverName>__browser_navigate` |
-| `mode` | `launch` | `launch` own browser / `cdp` attach to a running one / `extension` attach via the Playwright extension |
-| `browser` | `msedge` | launch mode: `chrome` \| `msedge` \| `firefox` \| `webkit`; also the default CDP channel |
-| `cdpEndpoint` | empty | CDP target: a Chromium channel (`msedge`, `msedge-beta`, `chrome-dev`, ...) or a CDP URL (`http://localhost:9222`) |
-| `cdpTimeoutMs` | `30000` | CDP attach timeout in milliseconds |
-| `headless` | `false` | launch mode without a visible window |
-| `userDataDir` | empty | persistent profile directory for launch mode |
-| `profileDirName` | empty | browser profile directory name used by extension mode, e.g. `Profile 1` |
-| `cwd` | empty | MCP server working directory (where screenshots land) |
-| `env` | `{}` | extra environment for the MCP server process |
-| `cliPath` | empty | explicit cli.js, bypassing module resolution |
-| `extraArgs` | `[]` | raw extra CLI flags, e.g. `['--caps', 'vision,devtools']` |
-| `toolCallTimeoutMs` | `120000` | per-tool-call timeout |
-| `failOnStartupError` | `false` | make a failed initial connection abort activation instead of only logging |
+| `serverName` | `playwright` | 工具名前缀：`mcp__<serverName>__browser_navigate` |
+| `mode` | `launch` | `launch` 自己开浏览器 / `cdp` 接管正在运行的浏览器 / `extension` 走浏览器扩展 |
+| `browser` | `msedge` | launch 模式取值：`chrome` \| `msedge` \| `firefox` \| `webkit`；cdp 模式下作为默认通道名 |
+| `cdpEndpoint` | 空 | cdp 目标：Chromium 通道名（`msedge`、`msedge-beta`、`chrome-dev`…）或 CDP URL（`http://localhost:9222`）；空则用 `browser` |
+| `cdpTimeoutMs` | `30000` | cdp 连接超时（毫秒） |
+| `headless` | `false` | launch 模式是否无窗口 |
+| `userDataDir` | 空 | launch 模式的持久化 profile 目录，登录态可留存 |
+| `profileDirName` | 空 | extension 模式下要连接的 profile 目录名，如 `Profile 1` |
+| `cwd` | 空 | MCP 服务进程工作目录，决定截图/快照落在哪 |
+| `env` | `{}` | 传给 MCP 服务进程的额外环境变量 |
+| `cliPath` | 空 | 显式指定 cli.js，绕过模块解析 |
+| `extraArgs` | `[]` | 追加原始 CLI 参数，如 `['--caps', 'vision,devtools']` |
+| `toolCallTimeoutMs` | `120000` | 单次工具调用超时 |
+| `failOnStartupError` | `false` | 首次连接失败时是否让该行激活失败（默认只记录日志） |
 
-Unknown keys are rejected and reported, never silently ignored.
+未知键会报错并跳过挂载，不会静默忽略。
 
-Note that `browser` and CDP channels are different sets: `msedge-beta` / `chrome-canary` are
-valid **CDP targets** but are not accepted by `--browser`.
+注意 `browser` 与 cdp 通道**不是同一组取值**：`msedge-beta` / `chrome-canary` 这类通道只能作为 cdp 目标，
+不能传给 `--browser`。
 
-## Modes
+## 三种模式怎么选
 
-- **launch** — starts its own browser; `chrome`/`msedge` use the installed system browser, so
-  no Chromium download is needed. Set `userDataDir` to keep logins.
-- **cdp** — attaches to a browser you are already using, with its logged-in sessions. The
-  target browser must be running; enable "Allow remote debugging for this browser instance" at
-  `edge://inspect/#remote-debugging` (`chrome://inspect/#remote-debugging` in Chrome). The
-  switch is persisted in the browser profile. Chromium 136+ ignores
-  `--remote-debugging-port` for the default profile, which is why the UI switch is the only
-  path that keeps your sessions.
-- **extension** — attaches through the
-  [Playwright Extension](https://chromewebstore.google.com/detail/playwright-extension/mmlmfjhmonkocbjadbfplnigmagldckm);
-  use `profileDirName` to pick a profile.
+**launch（默认，最省事）**
+用系统已装的浏览器，不下载 Chromium：
 
-## Where the browser comes from
+```yaml
+config:
+  mode: launch
+  browser: msedge
+  userDataDir: 'D:\browser-profiles\dsh'
+```
 
-- `chrome` / `msedge`: the system browser, nothing to download (recommended).
-- `firefox` / `webkit`: no system channel, so run `npx playwright install firefox` (or `webkit`).
-- Playwright's own Chromium: do not set `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` when installing, or
-  run `npx playwright install chromium` afterwards.
+**cdp —— 接管你正在用的浏览器（登录态全在）**
 
-## Security
+1. 让目标浏览器**处于运行状态**；
+2. 在它里面打开 `edge://inspect/#remote-debugging`（Chrome 是 `chrome://inspect/#remote-debugging`），
+   勾选 "Allow remote debugging for this browser instance"。这个开关会写进浏览器 profile，重启后仍然有效。
 
-- In `cdp` / `extension` mode the model can see **every logged-in site** in that browser. Use a
-  dedicated browser profile for automation.
-- `browser_run_code_unsafe` and `browser_evaluate` are equivalent to running arbitrary JS in
-  the browser process.
+```yaml
+config:
+  mode: cdp
+  browser: msedge            # 或 cdpEndpoint: msedge-beta / http://localhost:9222
+```
 
-## Coexistence
+> 为什么必须用这个 UI 开关：Chromium 136 起，`--remote-debugging-port` 对**默认** profile 已失效
+> （官方为防 cookie 窃取所做的安全变更）。UI 开关是现在唯一保留登录态又能被 CDP 接管的路径。
 
-If a hand-written `mcp-playwright` row already serves the same `serverName`, this plugin
-detects it, **skips mounting**, and logs a warning instead of failing startup. Remove that row
-to let the plugin own the capability.
+**extension**
+在目标浏览器安装 [Playwright Extension](https://chromewebstore.google.com/detail/playwright-extension/mmlmfjhmonkocbjadbfplnigmagldckm)，然后：
 
-## Troubleshooting
+```yaml
+config:
+  mode: extension
+  profileDirName: 'Profile 1'   # 可选，多 profile 时指定
+```
 
-| Symptom | Cause / fix |
+## 浏览器从哪来
+
+- `chrome` / `msedge`：直接用系统已安装的浏览器，**不需要下载**任何东西（推荐）。
+- `firefox` / `webkit`：Playwright 没有系统通道，需要 `npx playwright install firefox`（或 `webkit`）。
+- 想用 Playwright 自带的 Chromium：安装依赖时不要设置 `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`，
+  或事后执行 `npx playwright install chromium`。
+
+## 安全
+
+- `cdp` / `extension` 模式下，模型能看到该浏览器里**所有已登录站点**。建议给自动化单独一个浏览器 profile。
+- `browser_run_code_unsafe` 与 `browser_evaluate` 等价于在浏览器进程里执行任意 JS（RCE 等价），按需限制使用。
+
+## 与手写配置共存
+
+如果你已经在 `cordis.patch.yml` 手写了 `mcp-playwright` 行（同一个 `serverName`），本插件检测到后会
+**跳过挂载**并打印一条警告，不会让启动失败。要让插件接管，请删掉那行。
+
+## 排错
+
+| 现象 | 原因 / 处理 |
 |---|---|
-| `not mounting: unknown config key "..."` | Fix the key; the message lists the valid ones |
-| `not mounting: cannot find @playwright/mcp` | Install it for the profile (`npm i @playwright/mcp`) or set `cliPath` |
-| `serverName ... already in use` | Another row owns it; rename or remove that row |
-| `browserType.launch: spawn EPERM` | The process is sandboxed; start DSH with normal rights |
-| cdp cannot connect, reads no `DevToolsActivePort` | The target browser is not running, or the inspect switch is off |
-| No tools appear | Did you restart the profile? Then check the logs for `browsercontrol-mcp` |
+| `not mounting: unknown config key "..."` | 配置键写错，按提示里的合法键列表改 |
+| `not mounting: cannot find @playwright/mcp` | 给该 profile 装依赖（`npm i @playwright/mcp`），或设 `cliPath` |
+| `serverName ... already in use` | 别处已有同行；改 `serverName` 或删掉旧行 |
+| `browserType.launch: spawn EPERM` | 进程被沙箱限制，用正常权限启动 DSH |
+| cdp 连不上，提示读不到 `DevToolsActivePort` | 目标浏览器没在运行，或上面的 inspect 开关没勾 |
+| 工具没出现 | 是否忘了重启 profile；再查日志里 `browsercontrol-mcp` 的报错 |
 
-## Dependencies and versions
+## 依赖与版本
 
-`@playwright/mcp` is a `dependency`; official `@deepseek-ai/*` packages are `peerDependencies`.
+`@playwright/mcp` 声明为 `dependencies`（开箱即用）；官方 `@deepseek-ai/*` 声明为 `peerDependencies`。
 
-The `@deepseek-ai/dsh-mcp-client` range enumerates one branch per released tuple:
+`@deepseek-ai/dsh-mcp-client` 的区间是**逐版本枚举**的：
 
 ```
 >=0.1.0-rc.2 <0.2.0-0 || >=0.1.1-rc.1 <0.2.0-0 || >=0.1.2-alpha.2 <0.2.0-0 ||
@@ -119,27 +144,25 @@ The `@deepseek-ai/dsh-mcp-client` range enumerates one branch per released tuple
 >=0.1.7-alpha.1 <0.2.0-0
 ```
 
-node-semver only admits a prerelease when some comparator shares its exact
-`major.minor.patch` tuple *and* carries a prerelease tag, so a broad-looking
-`>=0.1.5-rc.1 <0.2.0-0` silently rejects `0.1.6-rc.1` and leaves users with an `ERESOLVE`.
-This range covers every published `0.1.x` version (the ancient `0.0.1-rc.*` line is
-deliberately excluded); append a branch when the harness ships a new `0.1.x` prerelease.
+原因：node-semver 只有当区间里**某个比较符与该版本的 `major.minor.patch` 完全相同、且自身带预发布标签**时，
+才允许该预发布版本被匹配。所以看着很宽的 `>=0.1.5-rc.1 <0.2.0-0` 会**静默拒掉 `0.1.6-rc.1`**，用户会撞
+`ERESOLVE`。上面这份区间覆盖了 registry 上全部 `0.1.x` 已发布版本（`0.0.1-rc.*` 那批远古版本有意排除）；
+harness 再发新的 `0.1.x` 预发布时，照此追加一条分支即可。
 
-## Development
+## 开发
 
 ```powershell
 npm install
-npm test              # Node test runner
-npm run test:direct   # same tests, in-process
+npm test              # Node 测试运行器
+npm run test:direct   # 同进程执行，结果一致
 ```
 
-Coverage: argument building for all three modes, row generation (command, timeouts, failure
-policy, env), every config-rejection branch, conflict skip, degradation when `entries()`
-throws, error reporting without throwing, and the dispose race while a mount is in flight.
+用例覆盖：三种模式的参数构造、行生成（命令/超时/失败策略/环境变量）、配置校验的全部拒绝分支、
+冲突跳过、`entries()` 抛错时的降级、错误配置只记录不抛出、卸载与"卸载时挂载仍在飞行中"的竞态。
 
-`npm test` uses the Node test runner, which forks a child process per file; inside a confined
-sandbox that fork is refused (`spawn EPERM`), so use `npm run test:direct` there.
+`npm test` 走 Node 测试运行器（每个测试文件一个子进程）；**在受限沙箱里子进程 fork 会被拒（spawn EPERM）**，
+此时用 `npm run test:direct`。
 
-## License
+## 许可
 
 MIT
