@@ -7,6 +7,7 @@
 - insert:
     - id: browsercontrol-mcp
       name: 'dsh-browsercontrol-mcp'
+      # 全部可用键位、默认值与说明见 README 的配置表（与 lib/index.js 的 DEFAULTS 由测试强制一致）
       config:
         # 工具名前缀：mcp__<serverName>__browser_navigate
         serverName: playwright
@@ -17,3 +18,4 @@
         browser: msedge
         headless: false
         toolCallTimeoutMs: 120000
+
