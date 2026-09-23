@@ -1,0 +1,19 @@
+# dsh-browsercontrol-mcp —— DSH bundle patch
+#
+# 只插入插件自己这一行。Playwright MCP 的 dsh-mcp-client 行由插件在运行时挂载，
+# 这样 cli.js 与 node 的绝对路径可以在装好之后动态解析：
+#   - 不依赖 PATH，也不需要 npx（Windows 上 npx 是 .cmd，Node 的 spawn 起不来）
+#   - 卸载插件时随 fiber 一起回收，不留孤儿行
+- insert:
+    - id: browsercontrol-mcp
+      name: 'dsh-browsercontrol-mcp'
+      config:
+        # 工具名前缀：mcp__<serverName>__browser_navigate
+        serverName: playwright
+        # launch —— 用系统浏览器（推荐 msedge/chrome，免下载 Chromium）
+        # cdp    —— 接管你正在用的浏览器（需在 edge://inspect/#remote-debugging 勾选远程调试）
+        # extension —— 走 Playwright 浏览器扩展接管
+        mode: launch
+        browser: msedge
+        headless: false
+        toolCallTimeoutMs: 120000
