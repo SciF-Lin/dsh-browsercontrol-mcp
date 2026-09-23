@@ -27,7 +27,7 @@ dsh plugin --profile web add github:<owner>/dsh-browsercontrol-mcp
 dsh plugin --profile web add link:C:\Users\you\Desktop\dsh-browsercontrol-mcp
 ```
 
-web profile 的 patch 是 `patchReload: live`，通常不需要重启。验证方式：问智能体"列出你有哪些浏览器工具"，
+web profile 的 patch 是 `patchReload: live`，装完必须**重启一次 profile**：`patchReload: live` 只覆盖 patch 文件的改动，**新装的 bundle 要到进程启动时才参与组合**，不重启不会生效（重启 `dsh web` 即可，配置本身不会丢）。验证方式：问智能体"列出你有哪些浏览器工具"，
 或走 Inspect：`host / Tool / listTools`，应出现 `mcp__playwright__*`。
 
 卸载：

@@ -25,6 +25,8 @@ dsh plugin --profile web add github:<owner>/dsh-browsercontrol-mcp
 dsh plugin --profile web add link:C:\path\to\dsh-browsercontrol-mcp
 ```
 
+**Restart the profile once after installing.** `patchReload: live` covers edits to patch files, but a newly installed bundle only joins the composition at profile start, so nothing changes until you restart (`dsh web`); nothing in the config is lost.
+
 Verify: ask the agent to list its browser tools, or inspect `host / Tool / listTools` for
 `mcp__playwright__*`.
 
