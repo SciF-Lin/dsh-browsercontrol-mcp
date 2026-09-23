@@ -45,6 +45,13 @@ for (const file of ['README.md', 'README.zh.md']) {
   })
 }
 
+test('the two READMEs link to each other (language switcher)', () => {
+  const en = readFileSync(join(repo, 'README.md'), 'utf8')
+  const zh = readFileSync(join(repo, 'README.zh.md'), 'utf8')
+  assert.match(en, /\]\(README\.zh\.md\)/, 'README.md must link to README.zh.md')
+  assert.match(zh, /\]\(README\.md\)/, 'README.zh.md must link to README.md')
+})
+
 test('the bundle patch and the plugin agree on the row id and package name', () => {
   const patch = readFileSync(join(repo, 'cordis.patch.yml'), 'utf8')
   assert.match(patch, /- id: browsercontrol-mcp/)

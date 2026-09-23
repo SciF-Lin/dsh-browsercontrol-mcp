@@ -1,5 +1,7 @@
 # dsh-browsercontrol-mcp
 
+**简体中文** | [English](README.md)
+
 把 **Playwright MCP** 挂进 DeepSeek Harness，让智能体直接操作真实浏览器。
 
 安装后自动挂载官方 `@deepseek-ai/dsh-mcp-client` 行，工具以 `mcp__playwright__*` 出现在模型工具表里：

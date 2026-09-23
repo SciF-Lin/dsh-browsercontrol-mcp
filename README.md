@@ -1,5 +1,7 @@
 # dsh-browsercontrol-mcp
 
+**English** | [简体中文](README.zh.md)
+
 Real browser control for **DeepSeek Harness**: mounts **Playwright MCP** as native tools
 (`mcp__playwright__*`) so the agent can navigate, click, type, drag, upload, snapshot,
 screenshot, read console/network, and evaluate JS in a browser you actually use.
