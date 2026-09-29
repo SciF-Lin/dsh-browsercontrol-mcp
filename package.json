@@ -1,6 +1,6 @@
 {
   "name": "dsh-browsercontrol-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Real browser control for DeepSeek Harness: mounts Playwright MCP as native tools so the agent drives a browser you actually use.",
   "type": "module",
   "main": "lib/index.js",
@@ -43,6 +43,6 @@
   },
   "scripts": {
     "test": "node --test",
-    "test:direct": "node test/plugin.test.mjs && node test/docs.test.mjs"
+    "test:direct": "node test/plugin.test.mjs && node test/docs.test.mjs && node test/probe.test.mjs && node test/guide.test.mjs && node test/commands.test.mjs"
   }
 }

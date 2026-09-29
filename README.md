@@ -34,7 +34,8 @@ dsh plugin --profile web add link:C:\Users\you\Desktop\dsh-browsercontrol-mcp
 
 **装完必须重启一次 profile。** `patchReload: live` 只覆盖 patch 文件的改动，**新装的 bundle 要到进程启动时才参与组合**，不重启不会生效（重启 `dsh web` 即可，配置本身不会丢）。
 
-验证方式：问智能体"列出你有哪些浏览器工具"，或走 Inspect：`host / Tool / listTools`，应出现 `mcp__playwright__*`。
+验证方式：问智能体"列出你有哪些浏览器工具"，或走 Inspect：`host / Tool / listTools`，应出现 `mcp__playwright__*`；
+用 `/bw` 可直接查看浏览器状态。
 
 卸载：
 
@@ -59,9 +60,13 @@ dsh plugin --profile web remove dsh-browsercontrol-mcp
 | `cwd` | 空 | MCP 服务进程工作目录，决定截图/快照落在哪 |
 | `env` | `{}` | 传给 MCP 服务进程的额外环境变量 |
 | `cliPath` | 空 | 显式指定 cli.js，绕过模块解析 |
+| `executablePath` | 空 | launch 模式指定浏览器可执行文件（如便携版 Chrome），会覆盖通道查找 |
 | `extraArgs` | `[]` | 追加原始 CLI 参数，如 `['--caps', 'vision,devtools']` |
 | `toolCallTimeoutMs` | `120000` | 单次工具调用超时 |
 | `failOnStartupError` | `false` | 首次连接失败时是否让该行激活失败（默认只记录日志） |
+| `guideSetup` | `open` | cdp 授权引导：`off` 不引导 / `auto` 只提示与拦截 / `open` 额外在回合收尾时自动打开设置页 |
+| `probeTimeoutMs` | `1500` | 就绪探测的单次超时（毫秒） |
+| `browserExe` | 空 | 打开设置页所用的浏览器可执行文件；空则按通道自动查找 |
 
 未知键会报错并跳过挂载，不会静默忽略。
 
@@ -104,9 +109,28 @@ config:
   profileDirName: 'Profile 1'   # 可选，多 profile 时指定
 ```
 
+## 授权引导与斜杠命令
+
+cdp 模式需要目标浏览器**允许远程调试**（每个浏览器 profile 只需设置一次）。插件在真正需要时才引导，而不是让你先撞一次英文报错：
+
+1. **提前告知**：未授权时向系统提示注入一句说明，模型会先解释情况，而不是盲目调用浏览器工具；
+2. **拦截并给出指引**：浏览器工具调用会被拦下，理由是一条中文可执行指引（原生报错是英文技术信息）；
+3. **自动打开设置页**：模型这一回合说完话、回合即将收尾时，插件为你打开
+   `edge://inspect/#remote-debugging`（Chrome 是 `chrome://inspect/#remote-debugging`）——
+   **先文字、后弹窗**，你只需勾选 "Allow remote debugging for this browser instance"。
+
+**副作用声明**：第 3 步会启动浏览器进程（若尚未运行）并打开一个页面。它只在「浏览器调用被拦下且该回合结束」时发生，同一未授权周期内最多一次。不想要弹窗就设 `guideSetup: auto`，完全关闭引导设 `off`。
+
+| 命令 | 作用 |
+|---|---|
+| `/bw` | 查看状态：模式、目标浏览器、远程调试是否就绪 |
+| `/bw-setup` | 立即打开设置页，引导完成授权 |
+
 ## 浏览器从哪来
 
 - `chrome` / `msedge`：直接用系统已安装的浏览器，**不需要下载**任何东西（推荐）。
+- Chrome 与 Edge **都实测可用**：launch / cdp / extension 三条路径走的是同一套参数，代码里没有按浏览器分支。
+- Chrome 不在标准位置（便携版、多版本共存）时用 `executablePath` 指向它即可——实测它会**覆盖通道查找**，与 `browser` 同时给出也不冲突。
 - `firefox` / `webkit`：Playwright 没有系统通道，需要 `npx playwright install firefox`（或 `webkit`）。
 - 想用 Playwright 自带的 Chromium：安装依赖时不要设置 `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`，
   或事后执行 `npx playwright install chromium`。
@@ -130,6 +154,7 @@ config:
 | `serverName ... already in use` | 别处已有同行；改 `serverName` 或删掉旧行 |
 | `browserType.launch: spawn EPERM` | 进程被沙箱限制，用正常权限启动 DSH |
 | cdp 连不上，提示读不到 `DevToolsActivePort` | 目标浏览器没在运行，或上面的 inspect 开关没勾 |
+| 浏览器工具被拦下，理由说"未就绪" | 尚未勾选远程调试开关；运行 `/bw-setup` 或按理由里的地址勾选后重试 |
 | 工具没出现 | 是否忘了重启 profile；再查日志里 `browsercontrol-mcp` 的报错 |
 
 ## 依赖与版本
@@ -158,7 +183,9 @@ npm run test:direct   # 同进程执行，结果一致
 ```
 
 用例覆盖：三种模式的参数构造、行生成（命令/超时/失败策略/环境变量）、配置校验的全部拒绝分支、
-冲突跳过、`entries()` 抛错时的降级、错误配置只记录不抛出、卸载与"卸载时挂载仍在飞行中"的竞态。
+冲突跳过、`entries()` 抛错时的降级、错误配置只记录不抛出、卸载与"卸载时挂载仍在飞行中"的竞态；
+另有就绪探测（三平台目录映射、端口文件各状态、显式 CDP URL）、授权引导（提示文本、守卫匹配与
+副作用隔离、回合收尾只开一次窗口）、斜杠命令（注册与各分支返回）。
 
 `npm test` 走 Node 测试运行器（每个测试文件一个子进程）；**在受限沙箱里子进程 fork 会被拒（spawn EPERM）**，
 此时用 `npm run test:direct`。

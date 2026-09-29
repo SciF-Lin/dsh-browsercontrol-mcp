@@ -36,7 +36,7 @@ but a newly installed bundle only joins the composition at profile start, so not
 until you restart (`dsh web`); nothing in the config is lost.
 
 Verify: ask the agent to list its browser tools, or inspect `host / Tool / listTools` for
-`mcp__playwright__*`.
+`mcp__playwright__*`. `/bw` reports the browser state directly.
 
 ## Configuration
 
@@ -53,9 +53,13 @@ Verify: ask the agent to list its browser tools, or inspect `host / Tool / listT
 | `cwd` | empty | MCP server working directory (where screenshots land) |
 | `env` | `{}` | extra environment for the MCP server process |
 | `cliPath` | empty | explicit cli.js, bypassing module resolution |
+| `executablePath` | empty | launch mode: explicit browser binary, e.g. a portable Chrome; overrides the channel lookup |
 | `extraArgs` | `[]` | raw extra CLI flags, e.g. `['--caps', 'vision,devtools']` |
 | `toolCallTimeoutMs` | `120000` | per-tool-call timeout |
 | `failOnStartupError` | `false` | make a failed initial connection abort activation instead of only logging |
+| `guideSetup` | `open` | CDP authorization guidance: `off` / `auto` (prompt and guard only) / `open` (also open the settings page when a denied call's turn closes) |
+| `probeTimeoutMs` | `1500` | timeout for one readiness probe, in milliseconds |
+| `browserExe` | empty | executable used to open the settings page; empty means look it up from the channel |
 
 Unknown keys are rejected and reported, never silently ignored.
 
@@ -76,9 +80,31 @@ valid **CDP targets** but are not accepted by `--browser`.
   [Playwright Extension](https://chromewebstore.google.com/detail/playwright-extension/mmlmfjhmonkocbjadbfplnigmagldckm);
   use `profileDirName` to pick a profile.
 
+## Authorization guidance and slash commands
+
+CDP mode needs the target browser to **allow remote debugging** (once per browser profile). The plugin
+guides you at the moment it matters instead of letting the first call fail with an English error:
+
+1. **Prompt**: while unauthorized, a prompt section tells the model to explain the situation instead of calling a browser tool;
+2. **Guard**: browser tool calls are denied with an actionable message instead of the raw Playwright error;
+3. **Automatic window**: when a denied call's turn is about to close, the plugin opens
+   `edge://inspect/#remote-debugging` (`chrome://inspect/#remote-debugging` in Chrome) — text first,
+   window second. You only tick "Allow remote debugging for this browser instance".
+
+**Side effect**: step 3 starts the browser (when it is not running) and opens one page. It happens only
+after a denied browser call ends a turn, at most once per unauthorized episode. Set `guideSetup: auto`
+to guide without opening anything, or `off` to disable guidance entirely.
+
+| Command | Purpose |
+|---|---|
+| `/bw` | Report mode, target browser and whether remote debugging is ready |
+| `/bw-setup` | Open the settings page now |
+
 ## Where the browser comes from
 
 - `chrome` / `msedge`: the system browser, nothing to download (recommended).
+- Chrome and Edge are **both verified**: all three modes use the same arguments, with no per-browser branch in the code.
+- When Chrome is not in a standard location (portable build, several versions installed), point `executablePath` at it: it overrides the channel lookup and coexists with `browser`.
 - `firefox` / `webkit`: no system channel, so run `npx playwright install firefox` (or `webkit`).
 - Playwright's own Chromium: do not set `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` when installing, or
   run `npx playwright install chromium` afterwards.
@@ -105,6 +131,7 @@ to let the plugin own the capability.
 | `serverName ... already in use` | Another row owns it; rename or remove that row |
 | `browserType.launch: spawn EPERM` | The process is sandboxed; start DSH with normal rights |
 | cdp cannot connect, reads no `DevToolsActivePort` | The target browser is not running, or the inspect switch is off |
+| Browser tool calls are denied as not ready | The inspect switch is off; run `/bw-setup`, tick it as instructed, then retry |
 | No tools appear | Did you restart the profile? Then check the logs for `browsercontrol-mcp` |
 
 ## Dependencies and versions
@@ -136,6 +163,9 @@ npm run test:direct   # same tests, in-process
 Coverage: argument building for all three modes, row generation (command, timeouts, failure
 policy, env), every config-rejection branch, conflict skip, degradation when `entries()`
 throws, error reporting without throwing, and the dispose race while a mount is in flight.
+Readiness probing (three-platform directory mapping, every port-file state, explicit CDP URLs),
+authorization guidance (prompt text, guard matching and side-effect isolation, one window per
+turn close) and the slash commands each have their own suite.
 
 `npm test` uses the Node test runner, which forks a child process per file; inside a confined
 sandbox that fork is refused (`spawn EPERM`), so use `npm run test:direct` there.
